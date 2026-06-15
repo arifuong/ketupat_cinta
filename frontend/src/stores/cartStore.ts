@@ -67,7 +67,7 @@ export const useCartStore = create<CartState>()(
       },
 
       getItemCount: () => {
-        return get().items.reduce((count, item) => count + item.qty, 0);
+        return get().items.length;
       },
 
       setHydrated: () => set({ isHydrated: true }),

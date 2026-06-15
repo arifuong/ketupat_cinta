@@ -15,7 +15,7 @@ class PaymentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Payment::with(['order.user'])->orderByDesc('created_at');
+        $query = Payment::with(['order.user', 'order.resellerInvoice'])->orderByDesc('created_at');
 
         if ($request->has('status')) {
             $query->where('payment_status', $request->status);

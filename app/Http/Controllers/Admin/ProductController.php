@@ -84,11 +84,18 @@ class ProductController extends Controller
 
         // Check if product has associated order items
         if ($product->orderItems()->exists()) {
+            // Soft delete: status = inactive
+            $product->update(['status' => 'inactive']);
+
+            // Delete product from all active carts
+            \App\Models\Cart::where('product_id', $product->id)->delete();
+
+            $this->logService->log($request->user(), 'delete_product_soft', $product);
+
             return response()->json([
-                'success' => false,
-                'message' => 'Produk tidak dapat dihapus karena sudah memiliki pesanan.',
-                'data' => null,
-            ], 422);
+                'success' => true,
+                'message' => 'Produk memiliki riwayat transaksi. Produk telah dinonaktifkan.',
+            ]);
         }
 
         // Delete image file if exists
@@ -108,6 +115,20 @@ class ProductController extends Controller
         ]);
     }
 
+    public function restore(Request $request, int $id): JsonResponse
+    {
+        $product = Product::findOrFail($id);
+        $product->update(['status' => 'active']);
+
+        $this->logService->log($request->user(), 'restore_product', $product);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Produk berhasil diaktifkan kembali.',
+            'data' => new ProductResource($product),
+        ]);
+    }
+
     public function storeSchedule(Request $request): JsonResponse
     {
         $request->validate([
@@ -124,6 +145,16 @@ class ProductController extends Controller
         ]);
 
         $this->logService->log($request->user(), 'create_po_schedule', $schedule);
+
+        // Auto restore product if it has available schedules
+        $product = \App\Models\Product::findOrFail($request->product_id);
+        if ($product->status === 'inactive') {
+            $hasAvailable = $product->poSchedules()->available()->exists();
+            if ($hasAvailable) {
+                $product->update(['status' => 'active']);
+                $this->logService->log($request->user(), 'restore_product_auto', $product);
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -145,6 +176,16 @@ class ProductController extends Controller
         $schedule->update($request->only(['schedule_date', 'allocated_stock', 'remaining_stock', 'status']));
 
         $this->logService->log($request->user(), 'update_po_schedule', $schedule);
+
+        // Auto restore product if it has available schedules
+        $product = $schedule->product;
+        if ($product && $product->status === 'inactive') {
+            $hasAvailable = $product->poSchedules()->available()->exists();
+            if ($hasAvailable) {
+                $product->update(['status' => 'active']);
+                $this->logService->log($request->user(), 'restore_product_auto', $product);
+            }
+        }
 
         return response()->json([
             'success' => true,

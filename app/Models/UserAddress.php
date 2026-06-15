@@ -20,12 +20,32 @@ class UserAddress extends Model
         'district',
         'map_link',
         'is_default',
+        'recipient_name',
+        'recipient_phone',
+        'province',
+        'postal_code',
+        'notes',
     ];
 
     protected $casts = [
         'city' => City::class,
         'is_default' => 'boolean',
     ];
+
+    protected $appends = [
+        'maps_link',
+    ];
+
+    // Accessor and Mutator for maps_link alias
+    public function getMapsLinkAttribute(): ?string
+    {
+        return $this->map_link;
+    }
+
+    public function setMapsLinkAttribute($value)
+    {
+        $this->attributes['map_link'] = $value;
+    }
 
     // ──── Relationships ────
 
@@ -48,6 +68,12 @@ class UserAddress extends Model
             $parts[] = $this->district;
         }
         $parts[] = $this->city->label();
+        if ($this->province) {
+            $parts[] = $this->province;
+        }
+        if ($this->postal_code) {
+            $parts[] = $this->postal_code;
+        }
         return implode(', ', $parts);
     }
 }

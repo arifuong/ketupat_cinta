@@ -25,9 +25,11 @@ class PaymentController extends Controller
     {
         $order = Order::forUser($request->user()->id)->findOrFail($orderId);
 
+        $file = $request->file('proof_image') ?? $request->file('receipt_image');
+
         $payment = $this->paymentService->uploadProof(
             $order,
-            $request->file('proof_image'),
+            $file,
         );
 
         return response()->json([

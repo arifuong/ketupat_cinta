@@ -141,15 +141,26 @@ class NotificationService
     }
 
     /**
-     * Send invoice overdue notification.
+     * Send invoice overdue notification (Manual trigger).
      */
-    public function sendInvoiceOverdue(ResellerInvoice $invoice): void
+    public function sendInvoiceOverdueManual(ResellerInvoice $invoice): void
     {
+        $user = $invoice->user;
+
+        NotificationModel::create([
+            'user_id' => $user->id,
+            'type' => 'invoice_overdue_manual',
+            'title' => 'Tagihan Jatuh Tempo',
+            'message' => "Tagihan Anda #{$invoice->invoice_number} telah jatuh tempo. Silakan lakukan pembayaran.",
+            'data' => ['invoice_id' => $invoice->id, 'invoice_number' => $invoice->invoice_number],
+            'channel' => 'internal',
+        ]);
+
         SendWhatsAppNotification::dispatch(
-            $invoice->user->wa_number,
-            'invoice_overdue',
+            $user->wa_number,
+            'invoice_overdue', // Reuse existing template
             [
-                'name' => $invoice->user->name,
+                'name' => $user->name,
                 'invoice_number' => $invoice->invoice_number,
                 'amount' => number_format($invoice->remaining_debt, 0, ',', '.'),
             ]

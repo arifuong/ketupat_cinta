@@ -8,6 +8,7 @@ import { formatRupiah, formatDateTime } from '@/lib/utils';
 import StatusBadge from '@/components/StatusBadge';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { Order, PaginatedResponse } from '@/types/api';
+import toast from 'react-hot-toast';
 
 type ApiError = {
   response?: {
@@ -40,6 +41,13 @@ export default function AdminOrdersPage() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Custom Modal States
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
   useEffect(() => { fetchOrders(); }, [page, statusFilter]);
 
   async function fetchOrders() {
@@ -56,20 +64,39 @@ export default function AdminOrdersPage() {
     }
   }
 
-  async function handleStatusChange(orderId: number, newStatus: string) {
+  function handleStatusChange(order: Order, newStatus: string) {
+    if (order.order_status === newStatus) return;
+
+    setSelectedOrder(order);
+    setSelectedStatus(newStatus);
+    setCancelReason('');
+    setModalOpen(true);
+  }
+
+  async function executeStatusChange() {
+    if (!selectedOrder || !selectedStatus) return;
+
+    if (selectedStatus === 'cancelled' && !cancelReason.trim()) {
+      toast.error('Alasan pembatalan wajib diisi');
+      return;
+    }
+
+    setActionLoading(true);
+    const t = toast.loading('Memproses...');
     try {
-      if (newStatus === 'cancelled') {
-        const cancel_reason = window.prompt('Alasan pembatalan pesanan');
-        if (!cancel_reason?.trim()) return alert('Alasan pembatalan wajib diisi');
-        await api.patch(`/admin/orders/${orderId}/cancel`, { cancel_reason });
-        fetchOrders();
-        return;
+      if (selectedStatus === 'cancelled') {
+        await api.patch(`/admin/orders/${selectedOrder.id}/cancel`, { cancel_reason: cancelReason });
+        toast.success('Pesanan dibatalkan', { id: t });
+      } else {
+        await api.patch(`/admin/orders/${selectedOrder.id}/status`, { order_status: selectedStatus });
+        toast.success('Status berhasil diperbarui', { id: t });
       }
-      await api.patch(`/admin/orders/${orderId}/status`, { order_status: newStatus });
+      setModalOpen(false);
       fetchOrders();
-    } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      alert(apiErr.response?.data?.message || 'Gagal update status');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal update status', { id: t });
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -129,7 +156,7 @@ export default function AdminOrdersPage() {
                     <td className="py-3">
                       <select
                         value={order.order_status}
-                        onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                        onChange={(e) => handleStatusChange(order, e.target.value)}
                         className="input-field !py-1.5 !px-2 !text-xs !w-auto"
                       >
                         <option value={order.order_status}>{order.order_status_label}</option>
@@ -154,6 +181,48 @@ export default function AdminOrdersPage() {
             </div>
           )}
         </>
+      )}
+
+      {modalOpen && selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 animate-fade-in">
+          <div className="card w-full max-w-md p-6 bg-white rounded-2xl shadow-xl animate-scale-in">
+            <h3 className="text-lg font-bold mb-2 text-gray-950">
+              {selectedStatus === 'cancelled' ? 'Batalkan Pesanan' : 'Ubah Status Pesanan'}
+            </h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">
+              Apakah Anda yakin ingin {selectedStatus === 'cancelled' ? 'membatalkan' : 'mengubah status menjadi ' + selectedStatus} untuk pesanan <strong>{selectedOrder.order_number}</strong>?
+            </p>
+            
+            {selectedStatus === 'cancelled' && (
+              <div className="mb-4">
+                <label className="text-xs font-semibold text-gray-700 block mb-1.5 uppercase tracking-wider">Alasan Pembatalan</label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Masukkan alasan pembatalan..."
+                  className="input-field min-h-[80px]"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                disabled={actionLoading}
+                onClick={() => setModalOpen(false)}
+                className="btn-secondary text-sm !py-2 !px-4"
+              >
+                Batal
+              </button>
+              <button
+                disabled={actionLoading}
+                onClick={executeStatusChange}
+                className={`btn-primary text-sm !py-2 !px-4 ${selectedStatus === 'cancelled' ? '!bg-[var(--color-error)]' : ''}`}
+              >
+                {actionLoading ? 'Memproses...' : 'Konfirmasi'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

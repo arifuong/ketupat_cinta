@@ -39,6 +39,19 @@ class PaymentService
             ]);
         }
 
+        // Validate image corruption
+        if (@getimagesize($file->getRealPath()) === false) {
+            throw ValidationException::withMessages([
+                'proof_image' => ['Bukti pembayaran harus berupa gambar JPG, JPEG, PNG, atau WEBP.'],
+                'receipt_image' => ['Bukti pembayaran harus berupa gambar JPG, JPEG, PNG, atau WEBP.'],
+            ]);
+        }
+
+        // Delete old file if user uploads new one before verification
+        if (!empty($payment->proof_image_url)) {
+            Storage::disk('proofs')->delete($payment->proof_image_url);
+        }
+
         // Store proof image
         $path = $file->store('', 'proofs');
         $url = Storage::disk('proofs')->url($path);
@@ -62,6 +75,12 @@ class PaymentService
     public function verifyPayment(Payment $payment, bool $approved, User $admin): Payment
     {
         return DB::transaction(function () use ($payment, $approved, $admin) {
+            if ($payment->payment_status === PaymentStatus::PEMBAYARAN_BERHASIL || $payment->payment_status === PaymentStatus::PEMBAYARAN_DITOLAK) {
+                throw ValidationException::withMessages([
+                    'payment' => ['Pembayaran ini sudah diproses sebelumnya.'],
+                ]);
+            }
+
             $order = $payment->order;
 
             if ($approved) {
@@ -81,8 +100,10 @@ class PaymentService
                     }
                 }
 
-                // Update order status
-                $order->update(['order_status' => OrderStatus::PROCESSING]);
+                // Update order status only if not already processing or further
+                if ($order->order_status !== OrderStatus::PROCESSING && in_array($order->order_status, [OrderStatus::PENDING_PAYMENT, OrderStatus::WAITING_VERIFICATION])) {
+                    $order->update(['order_status' => OrderStatus::PROCESSING]);
+                }
 
                 // Send success notification
                 $this->notificationService->sendPaymentSuccess($order);

@@ -23,6 +23,13 @@ class CartService
             ]);
         }
 
+        // Validate product status
+        if ($schedule->product->status === 'inactive') {
+            throw ValidationException::withMessages([
+                'product' => ['Produk sudah tidak tersedia.'],
+            ]);
+        }
+
         // Validate schedule is available
         if (!$schedule->hasStock($qty)) {
             throw ValidationException::withMessages([
@@ -30,12 +37,12 @@ class CartService
             ]);
         }
 
-        // Validate MOQ for resellers
+        // Validate MOQ for resellers (Fixed at 10 as per request)
         if ($user->isReseller()) {
-            $minOrder = $schedule->product->min_order_reseller;
+            $minOrder = 10;
             if ($qty < $minOrder) {
                 throw ValidationException::withMessages([
-                    'moq' => ["Minimal pembelian reseller adalah {$minOrder}"],
+                    'moq' => ["Minimal pembelian reseller adalah {$minOrder} pcs."],
                 ]);
             }
         }
@@ -63,6 +70,13 @@ class CartService
             ->with(['product', 'poSchedule'])
             ->firstOrFail();
 
+        // Validate product status
+        if ($cart->product->status === 'inactive') {
+            throw ValidationException::withMessages([
+                'product' => ['Produk sudah tidak tersedia.'],
+            ]);
+        }
+
         // Validate stock
         if (!$cart->poSchedule->hasStock($qty)) {
             throw ValidationException::withMessages([
@@ -70,12 +84,12 @@ class CartService
             ]);
         }
 
-        // Validate MOQ
+        // Validate MOQ (Fixed at 10)
         if ($user->isReseller()) {
-            $minOrder = $cart->product->min_order_reseller;
+            $minOrder = 10;
             if ($qty < $minOrder) {
                 throw ValidationException::withMessages([
-                    'moq' => ["Minimal pembelian reseller adalah {$minOrder}"],
+                    'moq' => ["Minimal pembelian reseller adalah {$minOrder} pcs."],
                 ]);
             }
         }
@@ -114,12 +128,16 @@ class CartService
         $errors = [];
 
         foreach ($items as $item) {
+            if ($item->product->status === 'inactive') {
+                $errors[] = "Produk sudah tidak tersedia.";
+            }
+
             if (!$item->poSchedule->hasStock($item->qty)) {
                 $errors[] = "Stok {$item->product->name} tidak mencukupi. Tersisa: {$item->poSchedule->remaining_stock}";
             }
 
-            if ($user->isReseller() && $item->qty < $item->product->min_order_reseller) {
-                $errors[] = "MOQ reseller untuk {$item->product->name} adalah {$item->product->min_order_reseller}";
+            if ($user->isReseller() && $item->qty < 10) {
+                $errors[] = "Minimal pembelian reseller untuk {$item->product->name} adalah 10 pcs.";
             }
         }
 

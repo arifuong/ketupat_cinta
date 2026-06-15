@@ -48,21 +48,24 @@ class InvoiceService
                 'invoice_id' => $invoice->id,
                 'user_id' => $user->id,
                 'amount' => $amount,
-                'payment_method' => $data['payment_method'] ?? 'transfer_manual',
+                // Map 'tempo' to 'transfer_manual' for DB compatibility if needed, 
+                // or just ensure it matches the migration. 
+                // Based on migration: ['transfer_manual', 'midtrans']
+                'payment_method' => $data['payment_method'] === 'tempo' ? 'transfer_manual' : $data['payment_method'],
+
                 'proof_image_url' => $proofPath,
                 'paid_at' => now(),
+                'status' => 'menunggu_verifikasi',
             ]);
 
-            // Update invoice paid amount
-            $newPaidAmount = bcadd((string) $invoice->paid_amount, $amount, 2);
-            $invoice->update(['paid_amount' => $newPaidAmount]);
-
-            // Check if fully paid
-            if (bccomp($newPaidAmount, (string) $invoice->total_debt, 2) >= 0) {
-                $invoice->update(['status' => InvoiceStatus::LUNAS]);
-            }
+            // Tempo reseller: upload bukti tidak boleh langsung membuat invoice LUNAS.
+            // Setelah upload, invoice harus menunggu verifikasi admin.
+            $invoice->update([
+                'status' => InvoiceStatus::MENUNGGU_VERIFIKASI,
+            ]);
 
             return $payment;
+
         });
     }
 

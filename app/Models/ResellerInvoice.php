@@ -17,6 +17,9 @@ class ResellerInvoice extends Model
         'user_id',
         'order_id',
         'total_debt',
+        'installment_count',
+        'current_installment',
+        'installment_amount',
         'paid_amount',
         'due_date',
         'status',
@@ -26,7 +29,10 @@ class ResellerInvoice extends Model
     {
         return [
             'total_debt' => 'decimal:2',
+            'installment_amount' => 'decimal:2',
             'paid_amount' => 'decimal:2',
+            'installment_count' => 'integer',
+            'current_installment' => 'integer',
             'due_date' => 'date',
             'status' => InvoiceStatus::class,
         ];

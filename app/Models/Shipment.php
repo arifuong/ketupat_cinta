@@ -14,8 +14,11 @@ class Shipment extends Model
     protected $fillable = [
         'order_id',
         'courier_name',
+        'courier_wa',
         'driver_name',
         'vehicle_number',
+        'vehicle_plate',
+        'delivery_source',
         'tracking_link',
         'tracking_number',
         'status',

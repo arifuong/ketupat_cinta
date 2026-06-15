@@ -27,6 +27,41 @@ class PoSchedule extends Model
         'status' => PoScheduleStatus::class,
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($schedule) {
+            $bookedStock = 0;
+            if ($schedule->exists) {
+                $bookedStock = $schedule->orderItems()
+                    ->whereHas('order', fn($q) => $q->where('order_status', '!=', 'cancelled'))
+                    ->sum('qty');
+            }
+
+            $maxStock = (int) $schedule->allocated_stock;
+            $schedule->remaining_stock = max(0, $maxStock - $bookedStock);
+
+            if ($bookedStock < $maxStock) {
+                $schedule->status = PoScheduleStatus::OPEN;
+            } else {
+                $schedule->status = PoScheduleStatus::FULL;
+            }
+        });
+
+        static::saved(function ($schedule) {
+            $product = $schedule->product;
+            if ($product) {
+                $isFutureOrToday = $schedule->schedule_date >= now()->startOfDay();
+                if ($schedule->status === PoScheduleStatus::OPEN && $schedule->remaining_stock > 0 && $isFutureOrToday) {
+                    if ($product->status === 'inactive') {
+                        $product->update(['status' => 'active']);
+                    }
+                }
+            }
+        });
+    }
+
     // ──── Relationships ────
 
     public function product(): BelongsTo

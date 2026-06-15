@@ -25,6 +25,13 @@ class Product extends Model
         'status',
     ];
 
+    protected $appends = ['is_active'];
+
+    public function getIsActiveAttribute(): bool
+    {
+        return $this->status === 'active';
+    }
+
     protected $casts = [
         'price_normal' => 'decimal:2',
         'price_reseller' => 'decimal:2',

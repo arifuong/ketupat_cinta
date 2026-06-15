@@ -41,7 +41,13 @@ export interface UserAddress {
   city: 'bandung' | 'cimahi';
   district?: string;
   map_link?: string;
+  maps_link?: string;
   is_default: boolean;
+  recipient_name?: string;
+  recipient_phone?: string;
+  province?: string;
+  postal_code?: string;
+  notes?: string;
 }
 
 // ── Product ──
@@ -59,6 +65,8 @@ export interface Product {
   min_order_reseller?: number;
   stock_po_default?: number;
   status: string;
+  has_transactions?: boolean;
+  is_active?: boolean;
   po_schedules?: PoSchedule[];
   created_at: string;
 }
@@ -101,6 +109,12 @@ export interface Order {
     city: string;
     district?: string;
     map_link?: string;
+    maps_link?: string;
+    recipient_name?: string;
+    recipient_phone?: string;
+    province?: string;
+    postal_code?: string;
+    notes?: string;
   };
   subtotal_amount: string;
   shipping_cost: string;
@@ -157,10 +171,10 @@ export interface Payment {
 export interface Shipment {
   id: number;
   courier_name?: string;
-  driver_name?: string;
+  courier_wa?: string;
+  vehicle_plate?: string;
   vehicle_number?: string;
-  tracking_link?: string;
-  tracking_number?: string;
+  delivery_source?: 'store' | 'customer';
   status: string;
   status_label: string;
   notes?: string;
@@ -175,13 +189,20 @@ export interface Invoice {
   user?: User;
   order?: Order;
   total_debt: string;
+  installment_count: number;
+  current_installment: number;
+  installment_amount?: string;
   paid_amount: string;
   remaining_debt: string;
   due_date: string;
   due_date_formatted: string;
-  status: 'belum_ditagih' | 'menunggu_pembayaran' | 'terlambat' | 'lunas';
+  status: 'belum_ditagih' | 'menunggu_pembayaran' | 'menunggu_verifikasi' | 'sebagian_dibayar' | 'terlambat' | 'lunas';
   status_label: string;
   is_overdue: boolean;
+  payments?: Payment[];
+  tagihan_periode_ini_formatted?: string;
+  sudah_dibayar_periode_ini_formatted?: string;
+  sisa_tagihan_periode_ini_formatted?: string;
   created_at: string;
 }
 
@@ -241,6 +262,7 @@ export interface CheckoutForm {
   address_id: number;
   shipping_method: string;
   payment_type: 'transfer_manual' | 'qris_manual' | 'midtrans' | 'tempo';
+  installment_count?: number | string;
   notes?: string;
 }
 
@@ -250,5 +272,11 @@ export interface AddressForm {
   city: 'bandung' | 'cimahi';
   district?: string;
   map_link?: string;
+  maps_link?: string;
   is_default?: boolean;
+  recipient_name?: string;
+  recipient_phone?: string;
+  province?: string;
+  postal_code?: string;
+  notes?: string;
 }

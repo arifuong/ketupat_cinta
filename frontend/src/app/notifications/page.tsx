@@ -26,11 +26,13 @@ export default function NotificationsPage() {
   async function markRead(id: number) {
     await api.patch(`/notifications/${id}/read`);
     fetchNotifications();
+    window.dispatchEvent(new Event('notifications_updated'));
   }
 
   async function markAllRead() {
     await api.patch('/notifications/read-all');
     fetchNotifications();
+    window.dispatchEvent(new Event('notifications_updated'));
   }
 
   if (loading) return <LoadingSpinner size="lg" />;

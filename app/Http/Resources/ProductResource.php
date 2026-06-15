@@ -26,6 +26,8 @@ class ProductResource extends JsonResource
             'min_order_reseller' => $this->when($isReseller || $user?->isAdmin(), $this->min_order_reseller),
             'stock_po_default' => $this->when($user?->isAdmin(), $this->stock_po_default),
             'status' => $this->status,
+            'is_active' => $this->status === 'active',
+            'has_transactions' => $this->orderItems()->exists(),
             'po_schedules' => PoScheduleResource::collection($this->whenLoaded('poSchedules')),
             'created_at' => $this->created_at?->toISOString(),
         ];
@@ -33,18 +35,35 @@ class ProductResource extends JsonResource
 
     private function imageUrl(): ?string
     {
-        if (!$this->image_url) {
+        if (empty($this->image_url)) {
             return null;
         }
 
-        if (str_starts_with($this->image_url, 'http://') || str_starts_with($this->image_url, 'https://')) {
-            return $this->image_url;
+        $value = trim((string) $this->image_url);
+
+        // If stored value is already absolute URL, do not change.
+        if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
+            return $value;
         }
 
-        if (str_starts_with($this->image_url, '/storage/')) {
-            return url($this->image_url);
+        // If backend already stores public path like /storage/products/file.jpg
+        // Keep it consistent by converting to absolute with asset().
+        if (str_starts_with($value, '/storage/')) {
+            return asset($value);
         }
 
-        return asset('storage/' . ltrim($this->image_url, '/'));
+        // Normalize possible stored formats:
+        // - products/file.jpg
+        // - storage/products/file.jpg
+        $normalized = ltrim($value, '/');
+        $normalized = str_starts_with($normalized, 'storage/')
+            ? substr($normalized, strlen('storage/'))
+            : $normalized;
+
+        // Build absolute URL WITHOUT double segments.
+        // Target format (single): /storage/products/<file>
+        // normalized must be: products/<file> or storage/products/<file>
+        // We already stripped optional leading "storage/" above.
+        return rtrim(config('app.url'), '/') . '/storage/' . $normalized;
     }
 }

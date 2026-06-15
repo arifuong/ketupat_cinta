@@ -10,7 +10,7 @@ class StoreProductRequest extends FormRequest
 
     public function rules(): array
     {
-        $isUpdate = $this->isMethod('put') || $this->isMethod('patch');
+        $isUpdate = $this->isMethod('put') || $this->isMethod('patch') || $this->route('id') !== null;
         $requiredOrSometimes = $isUpdate ? 'sometimes' : 'required';
 
         return [

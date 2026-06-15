@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { Eye, EyeOff, UserPlus } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { normalizeWhatsApp } from '@/lib/utils';
 import type { RegisterForm } from '@/types/api';
 
 export default function RegisterPage() {
@@ -19,7 +20,8 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterForm) => {
     setError('');
     try {
-      await registerUser(data.name, data.wa_number, data.password, data.password_confirmation);
+      const cleanedWa = data.wa_number.replace(/[^0-9]/g, '');
+      await registerUser(data.name, cleanedWa, data.password, data.password_confirmation);
       router.push('/products');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
@@ -66,9 +68,18 @@ export default function RegisterPage() {
               <input
                 {...register('wa_number', {
                   required: 'Nomor WA wajib diisi',
-                  pattern: { value: /^\d+$/, message: 'Nomor WhatsApp hanya boleh berisi angka' },
-                  minLength: { value: 10, message: 'Nomor WhatsApp minimal 10 digit' },
-                  maxLength: { value: 13, message: 'Nomor WhatsApp maksimal 13 digit' },
+                  onChange: (e) => {
+                    e.target.value = normalizeWhatsApp(e.target.value);
+                  },
+                  validate: (value) => {
+                    if (!value.startsWith('08')) {
+                      return 'Nomor WhatsApp harus diawali dengan 08.';
+                    }
+                    if (value.length < 10 || value.length > 15) {
+                      return 'Nomor WhatsApp harus terdiri dari 10 sampai 15 digit.';
+                    }
+                    return true;
+                  }
                 })}
                 type="tel"
                 placeholder="081234567890"

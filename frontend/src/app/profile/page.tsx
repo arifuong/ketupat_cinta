@@ -7,6 +7,7 @@ import { User, MapPin, Plus, Trash2, Star, Camera, Shield, Clock, CheckCircle, L
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { normalizeWhatsApp } from '@/lib/utils';
 import type { UserAddress, ApiResponse, AddressForm, ResellerApplication } from '@/types/api';
 
 interface ProfileFormData {
@@ -34,6 +35,7 @@ export default function ProfilePage() {
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showPasswordEdit, setShowPasswordEdit] = useState(false);
   const [showResellerForm, setShowResellerForm] = useState(false);
@@ -71,7 +73,11 @@ export default function ProfilePage() {
 
   async function onProfileSubmit(formData: ProfileFormData) {
     try {
-      const { data } = await api.put<ApiResponse<typeof user>>('/user/profile', formData);
+      const cleanedData = {
+        ...formData,
+        wa_number: formData.wa_number.replace(/[^0-9]/g, ''),
+      };
+      const { data } = await api.put<ApiResponse<typeof user>>('/user/profile', cleanedData);
       if (data.data) setUser(data.data);
       setMessage('✅ Profil diperbarui');
       setShowProfileEdit(false);
@@ -131,11 +137,15 @@ export default function ProfilePage() {
 
   async function onAddressSubmit(formData: AddressForm) {
     try {
+      const cleanedData = {
+        ...formData,
+        recipient_phone: formData.recipient_phone?.replace(/[^0-9]/g, ''),
+      };
       if (editingId) {
-        await api.put(`/user/addresses/${editingId}`, formData);
+        await api.put(`/user/addresses/${editingId}`, cleanedData);
         setMessage('✅ Alamat diperbarui');
       } else {
-        await api.post('/user/addresses', formData);
+        await api.post('/user/addresses', cleanedData);
         setMessage('✅ Alamat ditambahkan');
       }
       addressForm.reset();
@@ -150,19 +160,37 @@ export default function ProfilePage() {
   }
 
   async function handleDeleteAddress(id: number) {
-    if (!confirm('Hapus alamat ini?')) return;
+    setDeleteTargetId(id);
+  }
+
+  async function executeDeleteAddress() {
+    if (!deleteTargetId) return;
     try {
-      await api.delete(`/user/addresses/${id}`);
+      await api.delete(`/user/addresses/${deleteTargetId}`);
       fetchData();
       setMessage('✅ Alamat dihapus');
-    } catch { }
+    } catch { } finally {
+      setDeleteTargetId(null);
+    }
     setTimeout(() => setMessage(''), 3000);
   }
 
   function startEditAddress(addr: UserAddress) {
     setEditingId(addr.id);
     setShowAddressForm(true);
-    addressForm.reset({ label: addr.label, detail: addr.detail, city: addr.city, district: addr.district || '', map_link: addr.map_link || '', is_default: addr.is_default });
+    addressForm.reset({
+      label: addr.label,
+      detail: addr.detail,
+      city: addr.city,
+      district: addr.district || '',
+      map_link: addr.map_link || '',
+      is_default: addr.is_default,
+      recipient_name: addr.recipient_name || user?.name || '',
+      recipient_phone: addr.recipient_phone || user?.wa_number || '',
+      province: addr.province || 'Jawa Barat',
+      postal_code: addr.postal_code || '',
+      notes: addr.notes || '',
+    });
   }
 
   if (!isHydrated || loading) return <LoadingSpinner size="lg" />;
@@ -231,7 +259,24 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Nomor WhatsApp *</label>
-              <input {...profileForm.register('wa_number', { required: 'WA wajib diisi', pattern: { value: /^\d+$/, message: 'Nomor WhatsApp hanya boleh berisi angka' }, minLength: { value: 10, message: 'Minimal 10 digit' }, maxLength: { value: 13, message: 'Maksimal 13 digit' } })} className="input-field" />
+              <input 
+                {...profileForm.register('wa_number', { 
+                  required: 'WA wajib diisi', 
+                  onChange: (e) => {
+                    e.target.value = normalizeWhatsApp(e.target.value);
+                  },
+                  validate: (value) => {
+                    if (!value.startsWith('08')) {
+                      return 'Nomor WhatsApp harus diawali dengan 08.';
+                    }
+                    if (value.length < 10 || value.length > 15) {
+                      return 'Nomor WhatsApp harus terdiri dari 10 sampai 15 digit.';
+                    }
+                    return true;
+                  }
+                })} 
+                className="input-field" 
+              />
               {profileForm.formState.errors.wa_number && <p className="text-xs text-red-500 mt-1">{profileForm.formState.errors.wa_number.message}</p>}
             </div>
           </div>
@@ -320,11 +365,11 @@ export default function ProfilePage() {
                     {resellerForm.formState.errors.business_name && <p className="text-xs text-red-500 mt-1">{resellerForm.formState.errors.business_name.message}</p>}
                   </div>
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Deskripsi Bisnis</label>
+                    <label className="text-sm font-medium mb-1 block">Nama Asli</label>
                     <textarea {...resellerForm.register('business_description')} rows={2} placeholder="Ceritakan tentang bisnis Anda..." className="input-field resize-none" />
                   </div>
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Motivasi</label>
+                    <label className="text-sm font-medium mb-1 block">Alamar asli</label>
                     <textarea {...resellerForm.register('motivation')} rows={2} placeholder="Kenapa Anda ingin menjadi reseller?" className="input-field resize-none" />
                   </div>
                   <div className="flex gap-2">
@@ -341,7 +386,23 @@ export default function ProfilePage() {
       {/* ═══ Addresses ═══ */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold flex items-center gap-2"><MapPin size={20} className="text-[var(--color-primary)]" />Alamat Saya</h2>
-        <button onClick={() => { setShowAddressForm(!showAddressForm); setEditingId(null); addressForm.reset({}); }} className="btn-primary text-sm !py-2 !px-4">
+        <button onClick={() => {
+          setShowAddressForm(!showAddressForm);
+          setEditingId(null);
+          addressForm.reset({
+            label: '',
+            detail: '',
+            city: undefined,
+            district: '',
+            map_link: '',
+            is_default: false,
+            recipient_name: user?.name || '',
+            recipient_phone: user?.wa_number || '',
+            province: 'Jawa Barat',
+            postal_code: '',
+            notes: '',
+          });
+        }} className="btn-primary text-sm !py-2 !px-4">
           <Plus size={16} />Tambah
         </button>
       </div>
@@ -352,30 +413,89 @@ export default function ProfilePage() {
           <h3 className="font-bold mb-4">{editingId ? 'Edit Alamat' : 'Tambah Alamat Baru'}</h3>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium mb-1 block">Label</label>
+              <label className="text-sm font-medium mb-1 block">Nama Penerima *</label>
+              <input {...addressForm.register('recipient_name', { required: 'Nama penerima wajib diisi' })} placeholder="Nama Lengkap Penerima" className="input-field" />
+              {addressForm.formState.errors.recipient_name && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.recipient_name.message}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nomor WhatsApp *</label>
+              <input 
+                {...addressForm.register('recipient_phone', { 
+                  required: 'Nomor WhatsApp wajib diisi',
+                  onChange: (e) => {
+                    e.target.value = normalizeWhatsApp(e.target.value);
+                  },
+                  validate: (value) => {
+                    if (!value.startsWith('08')) {
+                      return 'Nomor WhatsApp harus diawali dengan 08.';
+                    }
+                    if (value.length < 10 || value.length > 15) {
+                      return 'Nomor WhatsApp harus terdiri dari 10 sampai 15 digit.';
+                    }
+                    return true;
+                  }
+                })} 
+                placeholder="Contoh: 081234567890" 
+                className="input-field" 
+              />
+              {addressForm.formState.errors.recipient_phone && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.recipient_phone.message}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Label Alamat (Rumah/Kantor)</label>
               <input {...addressForm.register('label')} placeholder="Rumah, Kantor..." className="input-field" />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Kota *</label>
+              <label className="text-sm font-medium mb-1 block">Kota/Kabupaten *</label>
               <select {...addressForm.register('city', { required: 'Pilih kota' })} className="input-field">
-                <option value="">Pilih Kota</option>
+                <option value="">Pilih Kota/Kabupaten</option>
                 <option value="bandung">Bandung</option>
                 <option value="cimahi">Cimahi</option>
               </select>
               {addressForm.formState.errors.city && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.city.message}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Kecamatan *</label>
+              <input {...addressForm.register('district', { required: 'Kecamatan wajib diisi' })} placeholder="Kecamatan..." className="input-field" />
+              {addressForm.formState.errors.district && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.district.message}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Provinsi *</label>
+              <input {...addressForm.register('province', { required: 'Provinsi wajib diisi' })} placeholder="Provinsi..." className="input-field" />
+              {addressForm.formState.errors.province && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.province.message}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Kode Pos</label>
+              <input {...addressForm.register('postal_code')} placeholder="Kode Pos..." className="input-field" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Link Google Maps *</label>
+              <input 
+                {...addressForm.register('map_link', { 
+                  required: 'Link Google Maps wajib diisi',
+                  validate: (value) => {
+                    const pattern = /(google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl|goo\.gl\/maps)/i;
+                    if (!value) return 'Link Google Maps wajib diisi';
+                    try {
+                      new URL(value);
+                    } catch {
+                      return 'Format URL tidak valid';
+                    }
+                    return pattern.test(value) || 'Link Google Maps harus berupa URL Google Maps yang valid.';
+                  }
+                })} 
+                placeholder="https://maps.google.com/..." 
+                className="input-field" 
+              />
+              {addressForm.formState.errors.map_link && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.map_link.message}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="text-sm font-medium mb-1 block">Detail Alamat *</label>
               <textarea {...addressForm.register('detail', { required: 'Alamat wajib diisi' })} rows={2} className="input-field resize-none" placeholder="Jl. Contoh No. 123, RT/RW..." />
               {addressForm.formState.errors.detail && <p className="text-xs text-red-500 mt-1">{addressForm.formState.errors.detail.message}</p>}
             </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Kecamatan</label>
-              <input {...addressForm.register('district')} placeholder="Kecamatan..." className="input-field" />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Link Maps</label>
-              <input {...addressForm.register('map_link')} placeholder="https://maps.google.com/..." className="input-field" />
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium mb-1 block">Catatan Alamat (Opsional)</label>
+              <input {...addressForm.register('notes')} placeholder="Patokan, warna pagar, dll (opsional)" className="input-field" />
             </div>
             <div className="flex items-center gap-2 md:col-span-2">
               <input type="checkbox" {...addressForm.register('is_default')} className="accent-[var(--color-primary)]" id="is_default" />
@@ -411,6 +531,31 @@ export default function ProfilePage() {
           <p className="text-center py-8 text-[var(--color-text-muted)]">Belum ada alamat. Tambahkan alamat untuk mulai pesan.</p>
         )}
       </div>
+
+      {deleteTargetId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 animate-fade-in">
+          <div className="card w-full max-w-md p-6 bg-white rounded-2xl shadow-xl animate-scale-in">
+            <h3 className="text-lg font-bold mb-2 text-gray-950">Hapus Alamat</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              Apakah Anda yakin ingin menghapus alamat ini? Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTargetId(null)}
+                className="btn-secondary text-sm !py-2 !px-4"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeDeleteAddress}
+                className="btn-primary text-sm !py-2 !px-4 !bg-[var(--color-error)]"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

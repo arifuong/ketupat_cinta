@@ -49,23 +49,44 @@ class InvoiceController extends Controller
     {
         $request->validate([
             'amount' => 'required|numeric|min:1',
-            'payment_method' => 'required|in:transfer_manual,midtrans',
-            'proof_image' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+            'payment_method' => 'required|in:midtrans,tempo',
+            'proof_image' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'receipt_image' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ], [
+            'proof_image.image' => 'Bukti pembayaran harus berupa gambar JPG, JPEG, PNG, atau WEBP.',
+            'proof_image.mimes' => 'Bukti pembayaran harus berupa gambar JPG, JPEG, PNG, atau WEBP.',
+            'proof_image.max' => 'Ukuran bukti pembayaran maksimal 2 MB.',
+            'receipt_image.image' => 'Bukti pembayaran harus berupa gambar JPG, JPEG, PNG, atau WEBP.',
+            'receipt_image.mimes' => 'Bukti pembayaran harus berupa gambar JPG, JPEG, PNG, atau WEBP.',
+            'receipt_image.max' => 'Ukuran bukti pembayaran maksimal 2 MB.',
         ]);
 
         $invoice = ResellerInvoice::forUser($request->user()->id)->findOrFail($id);
+
+        $file = $request->file('proof_image') ?? $request->file('receipt_image');
 
         $payment = $this->invoiceService->payInvoice(
             $invoice,
             $request->user(),
             $request->only(['amount', 'payment_method']),
-            $request->file('proof_image'),
+            $file,
         );
+
 
         return response()->json([
             'success' => true,
             'message' => 'Pembayaran tagihan berhasil dicatat.',
             'data' => $payment,
         ]);
+    }
+
+    public function receipt(Request $request, int $id)
+    {
+        $invoice = \App\Models\ResellerInvoice::forUser($request->user()->id)
+            ->with(['user', 'payments', 'order.items.product'])
+            ->findOrFail($id);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('receipts.invoice', compact('invoice'));
+        return $pdf->download("struk-tagihan-{$invoice->invoice_number}.pdf");
     }
 }

@@ -72,6 +72,13 @@ class OrderService
                 $schedule = PoSchedule::lockForUpdate()
                     ->findOrFail($cartItem->po_schedule_id);
 
+                // Validate product status is active
+                if ($cartItem->product->status === 'inactive') {
+                    throw ValidationException::withMessages([
+                        'product' => ['Produk sudah tidak tersedia.'],
+                    ]);
+                }
+
                 // Validate stock availability
                 if (!$schedule->hasStock($cartItem->qty)) {
                     throw ValidationException::withMessages([
@@ -160,13 +167,19 @@ class OrderService
 
             // 9. Create reseller invoice for tempo
             if ($paymentMethod->isTempo()) {
+                $installmentCount = 10;
+                $installmentAmount = bcdiv($totalAmount, '10', 2);
+
                 ResellerInvoice::create([
                     'user_id' => $user->id,
                     'order_id' => $order->id,
                     'total_debt' => $totalAmount,
+                    'installment_count' => $installmentCount,
+                    'current_installment' => 0,
+                    'installment_amount' => $installmentAmount,
                     'paid_amount' => 0,
-                    'due_date' => now()->addDays(7), // Will be recalculated when order completes
-                    'status' => \App\Enums\InvoiceStatus::BELUM_DITAGIH,
+                    'due_date' => now()->addDays(14), // Initial due date: 14 days
+                    'status' => \App\Enums\InvoiceStatus::MENUNGGU_PEMBAYARAN,
                 ]);
             }
 
@@ -181,13 +194,21 @@ class OrderService
     }
 
     /**
-     * Update order status (admin only). Enforces sequential transitions.
+     * Update order status (admin only by convention). Enforces sequential transitions.
      */
     public function updateStatus(Order $order, OrderStatus $newStatus, ?User $admin = null): Order
     {
         if (!$order->canTransitionTo($newStatus)) {
             throw ValidationException::withMessages([
                 'order_status' => ["Tidak dapat mengubah status dari '{$order->order_status->label()}' ke '{$newStatus->label()}'."],
+            ]);
+        }
+
+        // Hard guard: completed hanya boleh terjadi setelah konfirmasi dari customer/reseller.
+        // Jika pemanggil adalah admin (diindikasikan admin parameter tidak null), blok COMPLETED.
+        if ($newStatus === OrderStatus::COMPLETED && $admin) {
+            throw ValidationException::withMessages([
+                'order_status' => ['Admin tidak dapat mengubah status pesanan menjadi selesai (completed).'],
             ]);
         }
 
@@ -205,6 +226,7 @@ class OrderService
                 ]);
             }
         }
+
 
         // Log activity
         if ($admin) {
@@ -260,8 +282,11 @@ class OrderService
             ]);
         }
 
+        // completed hanya boleh terjadi setelah konfirmasi.
+        // Di updateStatus, admin dilindungi sehingga hanya actor null yang bisa mencapai completed.
         return $this->updateStatus($order, OrderStatus::COMPLETED, null);
     }
+
 
     public function cancelByCustomer(Order $order, User $user, ?string $reason = null): Order
     {
@@ -269,11 +294,15 @@ class OrderService
             abort(404);
         }
 
+        // Customer/reseller hanya boleh batal sebelum status processing.
+        // Jika status sudah processing atau shipped maka pembatalan ditolak.
         if (!in_array($order->order_status, [OrderStatus::PENDING_PAYMENT, OrderStatus::WAITING_VERIFICATION], true)) {
             throw ValidationException::withMessages([
-                'order_status' => ['Pesanan tidak dapat dibatalkan karena sudah diproses admin.'],
+                'order_status' => ['Pesanan hanya dapat dibatalkan sebelum processing. Jika sudah processing atau shipped, pembatalan ditolak.'],
             ]);
         }
+
+
 
         return $this->cancelOrder($order, $reason, $user);
     }

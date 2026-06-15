@@ -6,9 +6,7 @@ use App\Enums\UserRole;
 use App\Models\User;
 use App\Models\ShippingRate;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-
 
 class DatabaseSeeder extends Seeder
 {
@@ -21,56 +19,46 @@ class DatabaseSeeder extends Seeder
         */
 
         // Admin
-        $admin = User::updateOrCreate(
+        User::updateOrCreate(
             ['wa_number' => '081111111111'],
             [
                 'name' => 'Admin',
                 'email' => 'admin@ketupat.com',
+                'wa_number' => '081111111111',
+                'password' => Hash::make('123456'),
                 'role' => UserRole::ADMIN,
-                'is_trusted' => false,
+                'is_trusted' => true,
                 'status' => 'active',
             ]
         );
 
-        DB::table('users')
-            ->where('id', $admin->id)
-            ->update([
-                'password' => Hash::make('123456'),
-            ]);
-
         // Customer
-        $customer = User::updateOrCreate(
+        User::updateOrCreate(
             ['wa_number' => '082222222222'],
             [
                 'name' => 'Customer',
+                'email' => 'customer@ketupat.com',
+                'wa_number' => '082222222222',
+                'password' => Hash::make('123456'),
                 'role' => UserRole::CUSTOMER,
                 'is_trusted' => false,
                 'status' => 'active',
             ]
         );
 
-        DB::table('users')
-            ->where('id', $customer->id)
-            ->update([
-                'password' => Hash::make('123456'),
-            ]);
-
         // Reseller
-        $reseller = User::updateOrCreate(
+        User::updateOrCreate(
             ['wa_number' => '083333333333'],
             [
                 'name' => 'Reseller',
+                'email' => 'reseller@ketupat.com',
+                'wa_number' => '083333333333',
+                'password' => Hash::make('123456'),
                 'role' => UserRole::RESELLER,
                 'is_trusted' => true,
                 'status' => 'active',
             ]
         );
-
-        DB::table('users')
-            ->where('id', $reseller->id)
-            ->update([
-                'password' => Hash::make('123456'),
-            ]);
 
         /*
         |--------------------------------------------------------------------------

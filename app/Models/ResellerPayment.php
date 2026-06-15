@@ -20,6 +20,7 @@ class ResellerPayment extends Model
         'paid_at',
         'verified_by',
         'verified_at',
+        'status',
     ];
 
     protected function casts(): array

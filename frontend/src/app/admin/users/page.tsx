@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import StatusBadge from '@/components/StatusBadge';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { User, PaginatedResponse } from '@/types/api';
+import toast from 'react-hot-toast';
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -30,11 +31,13 @@ export default function AdminUsersPage() {
   }
 
   async function handleRoleChange(userId: number, role: string, isTrusted?: boolean) {
+    const t = toast.loading('Memproses...');
     try {
       await api.patch(`/admin/users/${userId}/role`, { role, is_trusted: isTrusted || false });
+      toast.success('User berhasil diperbarui', { id: t });
       fetchUsers();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal');
+      toast.error(err.response?.data?.message || 'Gagal', { id: t });
     }
   }
 

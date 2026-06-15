@@ -8,6 +8,7 @@ import { formatRupiah } from '@/lib/utils';
 import StatusBadge from '@/components/StatusBadge';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { Product, PoSchedule, ApiResponse } from '@/types/api';
+import toast from 'react-hot-toast';
 
 type ProductForm = {
   name: string;
@@ -45,6 +46,7 @@ export default function AdminProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'schedule'; id: number; has_transactions?: boolean } | null>(null);
 
   const productForm = useForm<ProductForm>();
   const scheduleForm = useForm<ScheduleForm>();
@@ -54,7 +56,7 @@ export default function AdminProductsPage() {
   async function fetchProducts() {
     setLoading(true);
     try {
-      const { data } = await api.get<ApiResponse<Product[]>>('/admin/products');
+      const { data } = await api.get<ApiResponse<Product[]>>(`/admin/products?t=${Date.now()}`);
       setProducts(data.data);
     } catch {
     } finally {
@@ -105,6 +107,10 @@ export default function AdminProductsPage() {
 
   async function onScheduleSubmit(values: ScheduleForm) {
     try {
+      const productId = Number(values.product_id);
+      const prevProduct = products.find(p => p.id === productId);
+      const wasInactive = prevProduct?.status === 'inactive';
+
       if (editingScheduleId) {
         await api.put(`/admin/po-schedules/${editingScheduleId}`, values);
         setMessage('Jadwal PO berhasil diperbarui');
@@ -115,7 +121,14 @@ export default function AdminProductsPage() {
       setShowScheduleForm(false);
       setEditingScheduleId(null);
       scheduleForm.reset();
-      fetchProducts();
+      
+      const { data } = await api.get<ApiResponse<Product[]>>(`/admin/products?t=${Date.now()}`);
+      setProducts(data.data);
+
+      const updatedProduct = data.data.find(p => p.id === productId);
+      if (wasInactive && updatedProduct?.status === 'active') {
+        toast.success('Produk berhasil diaktifkan kembali.');
+      }
     } catch (err: unknown) {
       setMessage(getErrorMessage(err));
     }
@@ -142,18 +155,6 @@ export default function AdminProductsPage() {
     setShowProductForm(true);
   }
 
-  async function deleteProduct(productId: number) {
-    if (!confirm('Hapus produk ini?')) return;
-    try {
-      await api.delete(`/admin/products/${productId}`);
-      setMessage('Produk berhasil dihapus');
-      fetchProducts();
-    } catch (err: unknown) {
-      setMessage(getErrorMessage(err));
-    }
-    setTimeout(() => setMessage(''), 3000);
-  }
-
   function startCreateSchedule() {
     setEditingScheduleId(null);
     scheduleForm.reset();
@@ -172,16 +173,42 @@ export default function AdminProductsPage() {
     setShowScheduleForm(true);
   }
 
-  async function deleteSchedule(scheduleId: number) {
-    if (!confirm('Hapus jadwal PO ini?')) return;
+  function triggerDeleteProduct(product: Product) {
+    setDeleteTarget({ type: 'product', id: product.id, has_transactions: product.has_transactions });
+  }
+
+  function triggerDeleteSchedule(id: number) {
+    setDeleteTarget({ type: 'schedule', id });
+  }
+
+  async function handleRestoreProduct(id: number) {
+    const t = toast.loading('Mengaktifkan kembali...');
     try {
-      await api.delete(`/admin/po-schedules/${scheduleId}`);
-      setMessage('Jadwal PO berhasil dihapus');
+      const { data } = await api.post<{ success: boolean; message: string }>(`/admin/products/${id}/restore`);
+      toast.success(data.message || 'Produk berhasil diaktifkan kembali', { id: t });
       fetchProducts();
     } catch (err: unknown) {
-      setMessage(getErrorMessage(err));
+      toast.error(getErrorMessage(err), { id: t });
     }
-    setTimeout(() => setMessage(''), 3000);
+  }
+
+  async function executeDelete() {
+    if (!deleteTarget) return;
+    const { type, id } = deleteTarget;
+    const t = toast.loading('Menghapus...');
+    try {
+      if (type === 'product') {
+        const { data } = await api.delete<{ success: boolean; message: string }>(`/admin/products/${id}`);
+        toast.success(data.message || 'Produk berhasil dihapus', { id: t });
+      } else {
+        await api.delete(`/admin/po-schedules/${id}`);
+        toast.success('Jadwal PO berhasil dihapus', { id: t });
+      }
+      setDeleteTarget(null);
+      fetchProducts();
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err), { id: t });
+    }
   }
 
   if (loading) return <LoadingSpinner size="lg" />;
@@ -275,47 +302,135 @@ export default function AdminProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {products.map((product) => (
-                  <tr key={product.id} className="align-top">
-                    <td className="px-5 py-4">
-                      <p className="font-semibold">{product.name}</p>
-                      <p className="mt-1 max-w-sm text-xs text-[var(--color-text-muted)]">{product.description}</p>
-                    </td>
-                    <td className="px-5 py-4">
-                      <p>{formatRupiah(product.price_normal)}</p>
-                      <p className="text-xs text-[var(--color-secondary)]">{formatRupiah(product.price_reseller || '0')}</p>
-                    </td>
-                    <td className="px-5 py-4">{product.min_order_customer}/{product.min_order_reseller}</td>
-                    <td className="px-5 py-4">
-                      <div className="space-y-2">
-                        {product.po_schedules?.length ? product.po_schedules.map((schedule) => (
-                          <div key={schedule.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-                            <div>
-                              <p className="font-medium">{schedule.schedule_date_formatted}</p>
-                              <p className="text-xs text-[var(--color-text-muted)]">{schedule.remaining_stock}/{schedule.allocated_stock}</p>
+                {products.map((product) => {
+                  const hasSchedules = product.po_schedules && product.po_schedules.length > 0;
+                  const isInactive = product.status === 'inactive';
+
+                  let statusBadge = null;
+                  if (isInactive) {
+                    statusBadge = (
+                      <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                        ⚫ Produk Nonaktif
+                      </span>
+                    );
+                  } else {
+                    const allFull = hasSchedules && product.po_schedules!.every(s => s.status === 'full' || s.remaining_stock === 0);
+                    const stockOut = !hasSchedules || product.po_schedules!.every(s => s.remaining_stock === 0);
+
+                    if (allFull) {
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                          🔴 Kuota PO Penuh
+                        </span>
+                      );
+                    } else if (stockOut) {
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                          🔴 Produk Habis
+                        </span>
+                      );
+                    } else {
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                          🟢 Aktif
+                        </span>
+                      );
+                    }
+                  }
+
+                  return (
+                    <tr key={product.id} className="align-top">
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="font-semibold text-gray-900">{product.name}</span>
+                          {statusBadge}
+                        </div>
+                        <p className="max-w-sm text-xs text-[var(--color-text-muted)]">{product.description}</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <p>{formatRupiah(product.price_normal)}</p>
+                        <p className="text-xs text-[var(--color-secondary)]">{formatRupiah(product.price_reseller || '0')}</p>
+                      </td>
+                      <td className="px-5 py-4">{product.min_order_customer}/{product.min_order_reseller}</td>
+                      <td className="px-5 py-4">
+                        <div className="space-y-2">
+                          {product.po_schedules?.length ? product.po_schedules.map((schedule) => (
+                            <div key={schedule.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                              <div>
+                                <p className="font-medium">{schedule.schedule_date_formatted}</p>
+                                <p className="text-xs text-[var(--color-text-muted)]">{schedule.remaining_stock}/{schedule.allocated_stock}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <StatusBadge status={schedule.status} label={schedule.status_label} />
+                                <button onClick={() => startEditSchedule(schedule)} className="btn-ghost !p-1.5"><Edit3 size={14} /></button>
+                                <button onClick={() => triggerDeleteSchedule(schedule.id)} className="btn-ghost !p-1.5 text-red-500"><Trash2 size={14} /></button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <StatusBadge status={schedule.status} label={schedule.status_label} />
-                              <button onClick={() => startEditSchedule(schedule)} className="btn-ghost !p-1.5"><Edit3 size={14} /></button>
-                              <button onClick={() => deleteSchedule(schedule.id)} className="btn-ghost !p-1.5 text-red-500"><Trash2 size={14} /></button>
-                            </div>
-                          </div>
-                        )) : <span className="text-xs text-[var(--color-text-muted)]">Belum ada jadwal</span>}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => startEditProduct(product)} className="btn-secondary text-xs !px-3 !py-2"><Edit3 size={14} />Edit</button>
-                        <button onClick={() => deleteProduct(product.id)} className="btn-ghost text-xs !px-3 !py-2 text-red-500"><Trash2 size={14} />Hapus</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          )) : <span className="text-xs text-[var(--color-text-muted)]">Belum ada jadwal</span>}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end items-center gap-2">
+                          {product.status === 'inactive' && (
+                            <button
+                              onClick={() => handleRestoreProduct(product.id)}
+                              className="btn-primary text-xs !px-3 !py-2 !bg-[var(--color-success)] hover:!bg-[var(--color-success)]/90"
+                            >
+                              Aktifkan Kembali
+                            </button>
+                          )}
+                          <button onClick={() => startEditProduct(product)} className="btn-secondary text-xs !px-3 !py-2"><Edit3 size={14} />Edit</button>
+                          <button onClick={() => triggerDeleteProduct(product)} className="btn-ghost text-xs !px-3 !py-2 text-red-500"><Trash2 size={14} />Hapus</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 animate-fade-in">
+          <div className="card w-full max-w-md p-6 bg-white rounded-2xl shadow-xl animate-scale-in">
+            <h3 className="text-lg font-bold mb-2 text-gray-950">
+              {deleteTarget.type === 'product' ? 'Hapus Produk' : 'Hapus Jadwal PO'}
+            </h3>
+            <div className="text-sm text-[var(--color-text-muted)] mb-6 space-y-2">
+              {deleteTarget.type === 'product' ? (
+                deleteTarget.has_transactions ? (
+                  <>
+                    <p>Apakah Anda yakin ingin menghapus produk ini?</p>
+                    <p className="font-semibold text-amber-600">
+                      Produk memiliki riwayat transaksi. Produk tidak akan dihapus permanen tetapi akan dinonaktifkan agar histori transaksi tetap aman.
+                    </p>
+                  </>
+                ) : (
+                  <p>Apakah Anda yakin ingin menghapus produk ini? Produk akan dihapus permanen.</p>
+                )
+              ) : (
+                <p>Apakah Anda yakin ingin menghapus jadwal PO ini? Tindakan ini tidak dapat dibatalkan.</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="btn-secondary text-sm !py-2 !px-4"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeDelete}
+                className="btn-primary text-sm !py-2 !px-4 !bg-[var(--color-error)]"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,7 @@ enum PoScheduleStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::OPEN => 'Buka',
+            self::OPEN => 'Kuota Tersedia',
             self::CLOSED => 'Ditutup',
             self::FULL => 'Kuota PO Penuh',
         };

@@ -13,6 +13,9 @@ use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\ResellerApplicationController as AdminResellerApplicationController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Reseller\InvoiceController;
+use App\Http\Controllers\Admin\ResellerInvoiceController;
+use App\Http\Controllers\Admin\ReportController;
+
 use App\Http\Controllers\Webhook\MidtransController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\UtilController;
@@ -82,11 +85,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::post('/', [OrderController::class, 'store']);
         Route::get('/{id}', [OrderController::class, 'show']);
+        Route::get('/{id}/receipt', [OrderController::class, 'receipt']);
         Route::patch('/{id}/cancel', [OrderController::class, 'cancel']);
+        // Customer confirmation
         Route::patch('/{id}/received', [OrderController::class, 'received']);
+        Route::patch('/{id}/gosend-driver', [OrderController::class, 'updateGoSendDriver']);
     });
 
+    // ── Reseller orders confirmation & cancel ──
+    Route::prefix('reseller')->middleware('role:reseller')->group(function () {
+        Route::patch('/orders/{id}/received', [\App\Http\Controllers\Reseller\OrderController::class, 'received']);
+        Route::patch('/orders/{id}/cancel', [\App\Http\Controllers\Reseller\OrderController::class, 'cancel']);
+    });
+
+
     // ── Payments (Customer/Reseller) ──
+
     Route::prefix('payments')->group(function () {
         Route::post('/{orderId}/upload', [PaymentController::class, 'upload']);
         Route::post('/{orderId}/gateway', [PaymentController::class, 'gateway']);
@@ -110,6 +124,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('reseller')->middleware('role:reseller')->group(function () {
         Route::get('/invoices', [InvoiceController::class, 'index']);
         Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
+        Route::get('/invoices/{id}/receipt', [InvoiceController::class, 'receipt']);
         Route::post('/invoices/{id}/pay', [InvoiceController::class, 'pay']);
     });
 
@@ -120,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Dashboard
         Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+        Route::get('/dashboard/todo-summary', [DashboardController::class, 'todoSummary']);
 
         // Products & PO Schedules
         Route::get('/products', [AdminProductController::class, 'index']);
@@ -127,6 +143,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/products/{id}', [AdminProductController::class, 'update']);
         Route::put('/products/{id}', [AdminProductController::class, 'update']);
         Route::delete('/products/{id}', [AdminProductController::class, 'destroy']);
+        Route::post('/products/{id}/restore', [AdminProductController::class, 'restore']);
         Route::post('/po-schedules', [AdminProductController::class, 'storeSchedule']);
         Route::put('/po-schedules/{id}', [AdminProductController::class, 'updateSchedule']);
         Route::delete('/po-schedules/{id}', [AdminProductController::class, 'deleteSchedule']);
@@ -145,6 +162,17 @@ Route::middleware('auth:sanctum')->group(function () {
         // Payments
         Route::get('/payments', [AdminPaymentController::class, 'index']);
         Route::patch('/payments/{id}/verify', [AdminPaymentController::class, 'verify']);
+
+        // Reseller tempo invoices (approve/reject/remind)
+        Route::patch('/reseller-invoices/{id}/verify', [ResellerInvoiceController::class, 'verify']);
+        Route::post('/reseller-invoices/{id}/remind', [ResellerInvoiceController::class, 'remind']);
+
+        // Reports
+        Route::prefix('reports')->group(function () {
+            Route::get('/orders', [ReportController::class, 'orders']);
+            Route::get('/payments', [ReportController::class, 'payments']);
+            Route::get('/reseller-billing', [ReportController::class, 'resellerBilling']);
+        });
 
         // Users
         Route::get('/users', [DashboardController::class, 'users']);

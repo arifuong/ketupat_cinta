@@ -79,9 +79,17 @@ export default function CartPage() {
               const itemSubtotal = itemPrice * item.qty;
 
               return (
+
                 <div key={item.id} className={`card !p-4 flex gap-4 transition-opacity ${updatingId === item.id ? 'opacity-50' : ''}`}>
                   <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl overflow-hidden bg-gray-100">
-                    <Image src={formatImageUrl(item.product?.image_url)} alt={item.product?.name || 'Produk'} width={80} height={80} className="h-full w-full object-cover" />
+                    <Image
+                      src={formatImageUrl(item.product?.image_url)}
+                      alt={item.product?.name || 'Produk'}
+                      width={80}
+                      height={80}
+                      unoptimized
+                      className="h-full w-full object-cover"
+                    />
                   </div>
 
                   <div className="flex-1 min-w-0">

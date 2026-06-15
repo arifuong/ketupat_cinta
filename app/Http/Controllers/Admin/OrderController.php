@@ -97,6 +97,7 @@ class OrderController extends Controller
             'cancel_reason' => 'required|string|max:1000',
         ]);
 
+
         $order = Order::findOrFail($id);
         $order = $this->orderService->cancelByAdmin($order, $request->user(), $request->cancel_reason);
 
@@ -109,34 +110,51 @@ class OrderController extends Controller
 
     public function ship(Request $request, int $id): JsonResponse
     {
-        $request->validate([
-            'courier_name' => 'nullable|string|max:100',
-            'driver_name' => 'nullable|string|max:100',
-            'vehicle_number' => 'nullable|string|max:20',
-            'tracking_link' => 'nullable|url|max:500',
-            'tracking_number' => 'nullable|string|max:50',
-            'notes' => 'nullable|string|max:500',
+        $order = Order::with('shipment')->findOrFail($id);
+
+        if ($order->shipping_method->value === 'gosend_customer') {
+            // Customer GoSend: admin only clicks "Tandai Dikirim" and does not supply form parameters
+            $shipment = $order->shipment;
+            if (!$shipment || empty($shipment->courier_name) || empty($shipment->vehicle_plate)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data driver GoSend belum diisi oleh customer.',
+                    'data' => null,
+                ], 422);
+            }
+        } else {
+            // Store GoSend or Internal Courier: admin fills details
+            $request->validate([
+                'courier_name' => 'required|string|max:100',
+                'vehicle_plate' => 'required|string|max:20',
+                'courier_wa' => ['nullable', 'string', 'regex:/^[0-9+]+$/', 'max:20'],
+                'notes' => 'nullable|string|max:500',
+            ]);
+
+            $shipment = Shipment::updateOrCreate(
+                ['order_id' => $order->id],
+                [
+                    'courier_name' => $request->courier_name,
+                    'courier_wa' => $request->courier_wa,
+                    'vehicle_number' => $request->vehicle_plate,
+                    'vehicle_plate' => $request->vehicle_plate,
+                    'delivery_source' => 'store',
+                    'notes' => $request->notes,
+                ]
+            );
+        }
+
+        // Set status to in_transit and shipped_at to now
+        $shipment->update([
+            'status' => 'in_transit',
+            'shipped_at' => now(),
         ]);
-
-        $order = Order::findOrFail($id);
-
-        // Create or update shipment
-        $shipment = Shipment::updateOrCreate(
-            ['order_id' => $order->id],
-            array_merge($request->only([
-                'courier_name', 'driver_name', 'vehicle_number',
-                'tracking_link', 'tracking_number', 'notes',
-            ]), [
-                'status' => 'in_transit',
-                'shipped_at' => now(),
-            ])
-        );
 
         $this->orderService->updateStatus($order, OrderStatus::SHIPPED, $request->user());
 
         return response()->json([
             'success' => true,
-            'message' => 'Info pengiriman berhasil diupdate. Notifikasi WA dikirim.',
+            'message' => 'Pesanan berhasil ditandai sebagai dikirim.',
             'data' => new OrderResource($order->fresh(['items.product', 'payment', 'shipment'])),
         ]);
     }

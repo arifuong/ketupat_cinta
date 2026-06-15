@@ -7,6 +7,7 @@ import { formatRupiah, formatDateTime } from '@/lib/utils';
 import StatusBadge from '@/components/StatusBadge';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { Payment, PaginatedResponse } from '@/types/api';
+import toast from 'react-hot-toast';
 
 export default function AdminPaymentsPage() {
   const [payments, setPayments] = useState<any[]>([]);
@@ -30,11 +31,13 @@ export default function AdminPaymentsPage() {
 
   async function handleVerify(paymentId: number, approved: boolean) {
     setProcessing(paymentId);
+    const t = toast.loading('Memproses verifikasi...');
     try {
       await api.patch(`/admin/payments/${paymentId}/verify`, { approved });
+      toast.success(approved ? 'Pembayaran disetujui' : 'Pembayaran ditolak', { id: t });
       fetchPayments();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal');
+      toast.error(err.response?.data?.message || 'Gagal', { id: t });
     } finally {
       setProcessing(null);
     }
@@ -67,22 +70,28 @@ export default function AdminPaymentsPage() {
           {payments.map((payment: any) => (
             <div key={payment.id} className={`card !p-5 ${processing === payment.id ? 'opacity-50' : ''}`}>
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-[var(--color-primary)]">{payment.order?.order_number || `Order #${payment.order_id}`}</span>
-                    <StatusBadge status={payment.payment_status} label={payment.payment_status_label} />
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="font-bold text-[var(--color-primary)]">Order #{payment.order_number || payment.order?.order_number || '-'}</span>
+                    <span className="text-gray-300">|</span>
+                    <span className="font-semibold text-gray-700">Invoice: {payment.invoice_number || payment.order?.reseller_invoice?.invoice_number || '-'}</span>
+                    <StatusBadge status={payment.payment_status || '-'} label={payment.payment_status_label || '-'} />
                   </div>
-                  <p className="text-sm text-[var(--color-text-muted)]">
-                    {payment.order?.user?.name} • {payment.method_label} • {formatRupiah(payment.amount)}
-                  </p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">{formatDateTime(payment.created_at)}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm text-[var(--color-text-muted)]">
+                    <p>Customer/Reseller: <strong className="text-[var(--color-text)]">{payment.customer_name || payment.order?.user?.name || payment.user?.name || '-'}</strong></p>
+                    <p>Metode Pembayaran: <strong className="text-[var(--color-text)]">{payment.method_label || '-'}</strong></p>
+                    <p>Total Pembayaran: <strong className="text-green-600">{formatRupiah(payment.amount || 0)}</strong></p>
+                    <p>Tanggal Transaksi: <strong className="text-[var(--color-text)]">{payment.created_at ? formatDateTime(payment.created_at) : '-'}</strong></p>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {payment.proof_image_url && (
+                  {payment.proof_image_url && (payment.proof_image_url.startsWith('http://') || payment.proof_image_url.startsWith('https://') || payment.proof_image_url.startsWith('/')) ? (
                     <a href={payment.proof_image_url} target="_blank" rel="noreferrer" className="btn-ghost text-sm flex items-center gap-1">
                       <ExternalLink size={14} />Bukti
                     </a>
+                  ) : (
+                    <span className="text-xs text-[var(--color-text-muted)] italic">Bukti tidak tersedia</span>
                   )}
 
                   {payment.payment_status === 'menunggu_verifikasi' && (

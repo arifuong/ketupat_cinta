@@ -39,6 +39,39 @@ class DashboardController extends Controller
     }
 
     /**
+     * Admin dashboard todo summary counts.
+     */
+    public function todoSummary(): JsonResponse
+    {
+        $pendingOrders = Order::whereIn('order_status', [
+            \App\Enums\OrderStatus::PENDING_PAYMENT,
+            \App\Enums\OrderStatus::WAITING_VERIFICATION,
+            \App\Enums\OrderStatus::PROCESSING
+        ])->count();
+
+        $pendingPayments = Payment::where('payment_status', \App\Enums\PaymentStatus::MENUNGGU_VERIFIKASI)->count();
+
+        $pendingResellerBillings = ResellerInvoice::whereIn('status', [
+            \App\Enums\InvoiceStatus::MENUNGGU_VERIFIKASI,
+            \App\Enums\InvoiceStatus::SEBAGIAN_DIBAYAR,
+            \App\Enums\InvoiceStatus::TERLAMBAT
+        ])->count();
+
+        $pendingUsers = \App\Models\ResellerApplication::where('status', 'pending')->count();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dashboard todo summary.',
+            'data' => [
+                'pending_orders' => $pendingOrders,
+                'pending_payments' => $pendingPayments,
+                'pending_reseller_billings' => $pendingResellerBillings,
+                'pending_users' => $pendingUsers,
+            ]
+        ]);
+    }
+
+    /**
      * List all users.
      */
     public function users(Request $request): JsonResponse
@@ -93,7 +126,7 @@ class DashboardController extends Controller
      */
     public function invoices(Request $request): JsonResponse
     {
-        $query = ResellerInvoice::with(['user', 'order'])->orderByDesc('created_at');
+        $query = ResellerInvoice::with(['user', 'order', 'payments'])->orderByDesc('created_at');
 
         if ($request->has('status')) {
             $query->where('status', $request->status);

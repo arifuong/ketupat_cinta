@@ -10,28 +10,36 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
     public function updateProfile(Request $request): JsonResponse
     {
+        if ($request->has('wa_number')) {
+            $phone = preg_replace('/[^0-9]/', '', $request->wa_number);
+            if (str_starts_with($phone, '62')) {
+                $phone = '0' . substr($phone, 2);
+            }
+            $request->merge([
+                'wa_number' => $phone
+            ]);
+        }
+
         $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'wa_number' => [
                 'sometimes',
                 'string',
-                'regex:/^\d+$/',
-                'min:10',
-                'max:13',
-                'unique:users,wa_number,' . $request->user()->id,
+                'regex:/^08[0-9]{8,13}$/',
+                Rule::unique('users', 'wa_number')->ignore(auth()->id()),
             ],
             'avatar' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
             'old_password' => ['required_with:password', 'string'],
         ], [
-            'wa_number.regex' => 'Nomor WhatsApp hanya boleh berisi angka.',
-            'wa_number.min' => 'Nomor WhatsApp minimal 10 digit.',
-            'wa_number.max' => 'Nomor WhatsApp maksimal 13 digit.',
+            'wa_number.regex' => 'Nomor WhatsApp harus diawali dengan 08 dan terdiri dari 10 sampai 15 digit.',
+            'wa_number.unique' => 'Nomor WhatsApp sudah terdaftar.',
         ]);
 
         $user = $request->user();

@@ -30,6 +30,12 @@ class ProductController extends Controller
             ->with(['poSchedules' => fn ($q) => $q->upcoming()])
             ->firstOrFail();
 
+        if ($product->status === 'inactive') {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'product' => ['Produk sudah tidak tersedia.'],
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Detail produk.',
